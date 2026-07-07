@@ -165,62 +165,21 @@ func TestCollectorStateAfterConfigChange(t *testing.T) {
 	assert.Equal(t, StateClosed, col.GetState())
 }
 
-// copyTestConfig has a mutable field plus an opaque secret so the copy can be
-// checked for both independence from the original and preservation of secrets.
+// copyTestConfig has a mutable field plus an opaque secret so a snapshot can
+// be checked for both independence from the original and preservation of
+// secrets.
 type copyTestConfig struct {
 	Endpoint string              `mapstructure:"endpoint"`
 	Token    configopaque.String `mapstructure:"token"`
 }
 
-var copyTestType = component.MustNewType("copytest")
-
-func newCopyTestReceiverFactory() receiver.Factory {
-	return receiver.NewFactory(
-		copyTestType,
-		func() component.Config { return &copyTestConfig{} },
-		receiver.WithTraces(func(_ context.Context, _ receiver.Settings, _ component.Config, _ consumer.Traces) (receiver.Traces, error) {
-			return &nopComponent{}, nil
-		}, component.StabilityLevelStable),
-	)
-}
-
-func newCopyTestExporterFactory() exporter.Factory {
-	return exporter.NewFactory(
-		copyTestType,
-		func() component.Config { return &copyTestConfig{} },
-		exporter.WithTraces(func(_ context.Context, _ exporter.Settings, _ component.Config) (exporter.Traces, error) {
-			return &nopComponent{}, nil
-		}, component.StabilityLevelStable),
-	)
-}
-
-func copyTestFactories(t *testing.T) Factories {
-	var factories Factories
-	var err error
-
-	factories.Receivers, err = MakeFactoryMap(newCopyTestReceiverFactory())
-	require.NoError(t, err)
-	factories.Exporters, err = MakeFactoryMap(newCopyTestExporterFactory())
-	require.NoError(t, err)
-	factories.Processors, err = MakeFactoryMap(processortest.NewNopFactory())
-	require.NoError(t, err)
-	factories.Connectors, err = MakeFactoryMap(connectortest.NewNopFactory())
-	require.NoError(t, err)
-	factories.Extensions, err = MakeFactoryMap(extensiontest.NewNopFactory())
-	require.NoError(t, err)
-	factories.Telemetry = telemetry.NewFactory(func() component.Config { return fakeTelemetryConfig{} })
-
-	return factories
-}
-
-// TestCopyConfig verifies that copyConfig returns a deep copy: mutating the
-// original component configs after the copy must not affect the copy (otherwise
-// a later receiversOnlyChange comparison would always observe a difference and
-// never take the partial-reload path), and opaque secrets must survive the copy
-// unredacted.
-func TestCopyConfig(t *testing.T) {
-	factories := copyTestFactories(t)
-
+// TestNewConfigSnapshot verifies that newConfigSnapshot hashes component
+// configs rather than holding onto them: mutating the original component
+// configs after taking a snapshot must not affect an already-taken snapshot
+// (otherwise a later receiversOnlyChange comparison would always observe a
+// difference and never take the partial-reload path), and opaque secrets
+// must be distinguished (not redacted away) by the hash.
+func TestNewConfigSnapshot(t *testing.T) {
 	recID := component.MustNewIDWithName("copytest", "r1")
 	expID := component.MustNewIDWithName("copytest", "e1")
 	pipeID := pipeline.NewID(pipeline.SignalTraces)
@@ -246,42 +205,70 @@ func TestCopyConfig(t *testing.T) {
 		},
 	}
 
-	copied, err := copyConfig(cfg, factories)
+	snapshot, err := newConfigSnapshot(cfg)
+	require.NoError(t, err)
+	snapshot.receiverHashes, err = service.HashComponentConfigs(cfg.Receivers)
 	require.NoError(t, err)
 
-	// The copy is value-equal to the original, so a comparison sees no change.
-	assert.True(t, receiversOnlyChange(cfg, copied, isConnectorID(cfg.Connectors)),
-		"a fresh copy must compare as receivers-only (no change)")
+	// The snapshot is value-equal to the config it was taken from, so a
+	// comparison against a fresh snapshot of the same config sees no change.
+	unchanged, err := newConfigSnapshot(cfg)
+	require.NoError(t, err)
+	assert.True(t, receiversOnlyChange(snapshot, unchanged),
+		"a fresh snapshot of an unchanged config must compare as receivers-only (no change)")
 
-	// Opaque secrets survive the copy with their real values.
-	assert.Equal(t, configopaque.String("receiver-secret"), copied.Receivers[recID].(*copyTestConfig).Token)
-	assert.Equal(t, configopaque.String("exporter-secret"), copied.Exporters[expID].(*copyTestConfig).Token)
-
-	// Mutating the original after the copy must not touch the copy. This is the
-	// crux: if copyConfig shared component.Config instances, this exporter
-	// mutation would also appear in the copy and the next comparison would
+	// Mutating the original config after the snapshot was taken must not
+	// affect the snapshot. This is the crux: if the snapshot held a live
+	// reference to the exporter config, this mutation would silently change
+	// the snapshot's notion of the "old" config and the next comparison would
 	// always force a full reload.
 	cfg.Exporters[expID].(*copyTestConfig).Endpoint = "mutated"
-	cfg.Receivers[recID].(*copyTestConfig).Token = "rotated"
 
-	assert.Equal(t, "exporter", copied.Exporters[expID].(*copyTestConfig).Endpoint,
-		"mutating the original exporter config must not affect the copy")
-	assert.Equal(t, configopaque.String("receiver-secret"), copied.Receivers[recID].(*copyTestConfig).Token,
-		"mutating the original receiver secret must not affect the copy")
+	mutated, err := newConfigSnapshot(cfg)
+	require.NoError(t, err)
+	assert.False(t, receiversOnlyChange(snapshot, mutated),
+		"after mutating the original exporter, a new snapshot must observe the difference from the old one")
+}
 
-	// And the copy still reports a real difference against the mutated original
-	// (the exporter changed), confirming it is an independent snapshot.
-	assert.False(t, receiversOnlyChange(copied, cfg, isConnectorID(cfg.Connectors)),
-		"after mutating the original exporter, the copy must observe the difference")
+// TestHashComponentConfigsDetectsChanges verifies that HashComponentConfigs
+// produces different hashes for different component configs and stable
+// hashes across repeated calls, including for opaque secret fields (which
+// must not be redacted, or configs differing only by secret value would hash
+// identically and a necessary reload would be silently skipped).
+func TestHashComponentConfigsDetectsChanges(t *testing.T) {
+	recID := component.MustNewIDWithName("copytest", "r1")
+
+	base := map[component.ID]component.Config{
+		recID: &copyTestConfig{Endpoint: "receiver", Token: "secret-a"},
+	}
+	changedEndpoint := map[component.ID]component.Config{
+		recID: &copyTestConfig{Endpoint: "receiver-changed", Token: "secret-a"},
+	}
+	changedSecret := map[component.ID]component.Config{
+		recID: &copyTestConfig{Endpoint: "receiver", Token: "secret-b"},
+	}
+
+	baseHashes, err := service.HashComponentConfigs(base)
+	require.NoError(t, err)
+	baseHashesAgain, err := service.HashComponentConfigs(base)
+	require.NoError(t, err)
+	changedEndpointHashes, err := service.HashComponentConfigs(changedEndpoint)
+	require.NoError(t, err)
+	changedSecretHashes, err := service.HashComponentConfigs(changedSecret)
+	require.NoError(t, err)
+
+	assert.Equal(t, baseHashes[recID], baseHashesAgain[recID], "hashing the same config twice must be stable")
+	assert.NotEqual(t, baseHashes[recID], changedEndpointHashes[recID], "a changed endpoint must change the hash")
+	assert.NotEqual(t, baseHashes[recID], changedSecretHashes[recID], "a changed opaque secret must change the hash")
 }
 
 // normalizingConfig mutates a value on every unmarshal, modeling component
 // configs whose custom handlers change values when going through
-// marshal/unmarshal. Because the transform is applied each time the config is
-// unmarshalled, a config that has gone through one marshal/unmarshal round-trip
-// differs from one that has gone through two — which is exactly the asymmetry
-// between a config straight from the provider (unmarshalled once) and the stored
-// copy produced by copyConfig (unmarshalled again).
+// marshal/unmarshal (e.g. defaulting or deriving fields). Used by
+// TestCollectorPartialReceiverReloadNormalizingConfig and
+// TestCollectorNonReceiverChangeFullReload to verify that hashing such a
+// config, which reflects over it directly without any marshaling step, isn't
+// affected by that normalization behavior.
 type normalizingConfig struct {
 	Endpoint string `mapstructure:"endpoint"`
 }
@@ -329,60 +316,6 @@ func normalizingFactories(t *testing.T) Factories {
 	factories.Telemetry = telemetry.NewFactory(func() component.Config { return fakeTelemetryConfig{} })
 
 	return factories
-}
-
-// TestCopyConfigNormalizesForComparison verifies that comparing the stored copy
-// against a config that has NOT been round-tripped reports a spurious change when
-// component configs normalize values during marshal/unmarshal, and that copying
-// the incoming config too makes the comparison correct. This is the reason
-// tryPartialReceiverReload copies newCfg before comparing it to currentCfg.
-func TestCopyConfigNormalizesForComparison(t *testing.T) {
-	factories := normalizingFactories(t)
-
-	recID := component.MustNewIDWithName("normalizing", "r1")
-	expID := component.MustNewIDWithName("normalizing", "e1")
-	pipeID := pipeline.NewID(pipeline.SignalTraces)
-
-	newCfg := func() *Config {
-		return &Config{
-			Receivers: map[component.ID]component.Config{
-				recID: &normalizingConfig{Endpoint: "receiver"},
-			},
-			Exporters: map[component.ID]component.Config{
-				expID: &normalizingConfig{Endpoint: "exporter"},
-			},
-			Processors: map[component.ID]component.Config{},
-			Connectors: map[component.ID]component.Config{},
-			Extensions: map[component.ID]component.Config{},
-			Service: service.Config{
-				Telemetry: fakeTelemetryConfig{},
-				Pipelines: pipelines.Config{
-					pipeID: &pipelines.PipelineConfig{
-						Receivers: []component.ID{recID},
-						Exporters: []component.ID{expID},
-					},
-				},
-			},
-		}
-	}
-
-	// currentCfg is stored as a round-tripped copy, so its values are normalized.
-	stored, err := copyConfig(newCfg(), factories)
-	require.NoError(t, err)
-
-	// Comparing the normalized copy against a raw (un-normalized) config falsely
-	// reports a change: the values differ purely because of round-trip
-	// normalization, not because the user changed anything.
-	raw := newCfg()
-	assert.False(t, receiversOnlyChange(stored, raw, isConnectorID(stored.Connectors)),
-		"normalized copy vs raw config differ purely due to round-trip normalization")
-
-	// Copying the incoming config too makes both sides equivalently normalized,
-	// so the comparison correctly observes no change.
-	rawCopied, err := copyConfig(raw, factories)
-	require.NoError(t, err)
-	assert.True(t, receiversOnlyChange(stored, rawCopied, isConnectorID(stored.Connectors)),
-		"two round-tripped configs compare as receivers-only (no change)")
 }
 
 func TestCollectorPartialReceiverReload(t *testing.T) {

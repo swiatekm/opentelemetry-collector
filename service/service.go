@@ -296,14 +296,32 @@ func ReceiverPartialReloadEnabled() bool {
 // Only receivers that have been added, removed, or whose configuration or
 // pipeline membership changed are restarted. All other components remain
 // running without interruption.
+//
+// oldReceiverHashes identifies the previously applied receiver configs by
+// hash (see HashComponentConfigs) rather than by value, so callers do not
+// need to retain an independent copy of every receiver config across
+// reloads. On success, UpdateReceivers returns the hashes of
+// newReceiverConfigs so the caller can cache them for the next reload.
 func (srv *Service) UpdateReceivers(ctx context.Context,
-	oldReceiverConfigs, newReceiverConfigs map[component.ID]component.Config,
+	oldReceiverHashes map[component.ID]uint64, newReceiverConfigs map[component.ID]component.Config,
 	receiverFactories map[component.Type]receiver.Factory,
 	pipelineConfigs pipelines.Config,
-) error {
+) (map[component.ID]uint64, error) {
 	srv.telemetrySettings.Logger.Info("Performing partial receiver reload")
 	srv.graphSettings.PipelineConfigs = pipelineConfigs
-	return srv.host.Pipelines.UpdateReceivers(ctx, srv.graphSettings, oldReceiverConfigs, newReceiverConfigs, receiverFactories, srv.host)
+	return srv.host.Pipelines.UpdateReceivers(ctx, srv.graphSettings, oldReceiverHashes, newReceiverConfigs, receiverFactories, srv.host)
+}
+
+// HashComponentConfig computes a stable hash of a single component config
+// value; see graph.HashComponentConfigs for details.
+func HashComponentConfig(cfg component.Config) (uint64, error) {
+	return graph.HashComponentConfig(cfg)
+}
+
+// HashComponentConfigs computes a stable hash for each config in cfgs; see
+// graph.HashComponentConfigs for details.
+func HashComponentConfigs(cfgs map[component.ID]component.Config) (map[component.ID]uint64, error) {
+	return graph.HashComponentConfigs(cfgs)
 }
 
 // Shutdown the service. Shutdown will do the following steps in order:

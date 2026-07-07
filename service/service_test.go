@@ -895,5 +895,8 @@ func TestServiceUpdateReceivers(t *testing.T) {
 	// An unchanged update is a no-op that still exercises the public
 	// UpdateReceivers entry point on the running service.
 	rcvrCfgs, rcvrFactories := builders.NewNopReceiverConfigsAndFactories()
-	require.NoError(t, srv.UpdateReceivers(ctx, rcvrCfgs, rcvrCfgs, rcvrFactories, cfg.Pipelines))
+	rcvrHashes, err := HashComponentConfigs(rcvrCfgs)
+	require.NoError(t, err)
+	_, err = srv.UpdateReceivers(ctx, rcvrHashes, rcvrCfgs, rcvrFactories, cfg.Pipelines)
+	require.NoError(t, err)
 }

@@ -22,10 +22,15 @@ type opaqueConfig struct {
 	Token configopaque.String
 }
 
+func mustNewConfigSnapshot(t *testing.T, cfg *Config) *configSnapshot {
+	t.Helper()
+	snapshot, err := newConfigSnapshot(cfg)
+	require.NoError(t, err)
+	return snapshot
+}
+
 func TestReceiversOnlyChange(t *testing.T) {
 	connectorID := component.MustNewID("forward")
-	neverConnector := func(component.ID) bool { return false }
-	isForwardConnector := func(id component.ID) bool { return id == connectorID }
 
 	baseConfig := func() *Config {
 		return &Config{
@@ -53,18 +58,16 @@ func TestReceiversOnlyChange(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		oldCfg      *Config
-		newCfg      *Config
-		isConnector func(component.ID) bool
-		want        bool
+		name   string
+		oldCfg *Config
+		newCfg *Config
+		want   bool
 	}{
 		{
-			name:        "identical_configs",
-			oldCfg:      baseConfig(),
-			newCfg:      baseConfig(),
-			isConnector: neverConnector,
-			want:        true,
+			name:   "identical_configs",
+			oldCfg: baseConfig(),
+			newCfg: baseConfig(),
+			want:   true,
 		},
 		{
 			name:   "receiver_config_changed",
@@ -74,8 +77,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				c.Receivers[component.MustNewID("otlp")] = "changed"
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        true,
+			want: true,
 		},
 		{
 			name:   "receiver_added_to_config_map",
@@ -85,8 +87,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				c.Receivers[component.MustNewID("jaeger")] = struct{}{}
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        true,
+			want: true,
 		},
 		{
 			name:   "receiver_added_to_pipeline",
@@ -100,8 +101,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				)
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        true,
+			want: true,
 		},
 		{
 			name:   "processor_config_changed",
@@ -111,8 +111,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				c.Processors[component.MustNewID("batch")] = "changed"
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name:   "exporter_config_changed",
@@ -122,8 +121,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				c.Exporters[component.MustNewID("otlp")] = "changed"
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name:   "pipeline_added",
@@ -137,8 +135,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				}
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name: "pipeline_removed",
@@ -151,9 +148,8 @@ func TestReceiversOnlyChange(t *testing.T) {
 				}
 				return c
 			}(),
-			newCfg:      baseConfig(),
-			isConnector: neverConnector,
-			want:        false,
+			newCfg: baseConfig(),
+			want:   false,
 		},
 		{
 			name:   "processor_config_map_changed",
@@ -167,8 +163,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				}
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name: "pipeline_processors_list_changed",
@@ -186,8 +181,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				}
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name:   "exporter_config_map_changed",
@@ -201,8 +195,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				}
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name: "pipeline_exporters_list_changed",
@@ -220,8 +213,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				}
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name: "connector_config_changed",
@@ -239,8 +231,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				}
 				return c
 			}(),
-			isConnector: isForwardConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name: "connector_as_receiver_changed",
@@ -262,8 +253,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				)
 				return c
 			}(),
-			isConnector: isForwardConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name: "extension_config_changed",
@@ -281,8 +271,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				}
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name:   "extensions_list_changed",
@@ -295,8 +284,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				c.Service.Extensions = []component.ID{component.MustNewID("health")}
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name: "receiver_removed_from_config_map",
@@ -305,9 +293,8 @@ func TestReceiversOnlyChange(t *testing.T) {
 				c.Receivers[component.MustNewID("jaeger")] = struct{}{}
 				return c
 			}(),
-			newCfg:      baseConfig(),
-			isConnector: neverConnector,
-			want:        true,
+			newCfg: baseConfig(),
+			want:   true,
 		},
 		{
 			name:   "telemetry_changed",
@@ -317,8 +304,7 @@ func TestReceiversOnlyChange(t *testing.T) {
 				c.Service.Telemetry = "changed"
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 		{
 			name: "pipeline_id_replaced",
@@ -340,24 +326,24 @@ func TestReceiversOnlyChange(t *testing.T) {
 				}
 				return c
 			}(),
-			isConnector: neverConnector,
-			want:        false,
+			want: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := receiversOnlyChange(tt.oldCfg, tt.newCfg, tt.isConnector)
+			got := receiversOnlyChange(mustNewConfigSnapshot(t, tt.oldCfg), mustNewConfigSnapshot(t, tt.newCfg))
 			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 // TestReceiversOnlyChangeOpaqueSecrets verifies that the diff observes changes
-// to configopaque.String fields. This is the reason receiversOnlyChange uses
-// reflect.DeepEqual rather than a serialization-based comparison: opaque
-// strings marshal to "[REDACTED]", so a marshal-based diff would treat configs
-// with different secrets as identical and silently skip a necessary reload.
+// to configopaque.String fields. This is the reason component configs are
+// hashed by reflection rather than by a serialization-based comparison:
+// opaque strings marshal to "[REDACTED]", so a marshal-based diff would treat
+// configs with different secrets as identical and silently skip a necessary
+// reload.
 func TestReceiversOnlyChangeOpaqueSecrets(t *testing.T) {
 	// Sanity check: the two secrets are indistinguishable once marshaled, so a
 	// serialization-based diff would wrongly consider them equal.
@@ -392,7 +378,7 @@ func TestReceiversOnlyChangeOpaqueSecrets(t *testing.T) {
 	t.Run("receiver_secret_changed_is_receiver_only", func(t *testing.T) {
 		newCfg := baseConfig()
 		newCfg.Receivers[component.MustNewID("otlp")] = &opaqueConfig{Token: "secret2"}
-		assert.True(t, receiversOnlyChange(baseConfig(), newCfg, func(component.ID) bool { return false }))
+		assert.True(t, receiversOnlyChange(mustNewConfigSnapshot(t, baseConfig()), mustNewConfigSnapshot(t, newCfg)))
 	})
 
 	t.Run("exporter_secret_changed_is_not_receiver_only", func(t *testing.T) {
@@ -400,7 +386,7 @@ func TestReceiversOnlyChangeOpaqueSecrets(t *testing.T) {
 		newCfg.Exporters[component.MustNewID("otlp")] = &opaqueConfig{Token: "secret2"}
 		// Despite both secrets redacting to the same text, the diff must detect
 		// the exporter change and fall back to a full reload.
-		assert.False(t, receiversOnlyChange(baseConfig(), newCfg, func(component.ID) bool { return false }))
+		assert.False(t, receiversOnlyChange(mustNewConfigSnapshot(t, baseConfig()), mustNewConfigSnapshot(t, newCfg)))
 	})
 }
 

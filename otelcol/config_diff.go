@@ -4,7 +4,7 @@
 package otelcol // import "go.opentelemetry.io/collector/otelcol"
 
 import (
-	"reflect"
+	"maps"
 	"slices"
 
 	"go.opentelemetry.io/collector/component"
@@ -15,64 +15,64 @@ import (
 // in pipeline receiver lists. Everything else (processors, exporters,
 // connectors, extensions, telemetry, pipeline structure) must be identical.
 //
-// Configuration sections are compared using reflect.DeepEqual because
-// component.Config is an empty interface with no hash or fingerprint contract.
-// Serialization-based comparison (JSON, gob, etc.) is unsafe here because
-// configopaque.String implements MarshalText by returning "[REDACTED]",
-// which would treat configs with different secret values as identical and
-// silently skip necessary reloads. reflect.DeepEqual compares raw field
-// values without invoking marshal interfaces, so it correctly distinguishes
-// configs that differ only in opaque fields. A false negative (reporting
-// equal configs as different) is safe — it simply falls back to a full reload.
+// Component configs (telemetry, extensions, processors, exporters,
+// connectors) are compared by hash rather than by value, since
+// component.Config is an empty interface with no hash or fingerprint
+// contract and the underlying values may be mutated by the components that
+// own them; see service.HashComponentConfigs for why hashing is done by
+// reflection rather than serialization. A false negative (reporting equal
+// configs as different) is safe — it simply falls back to a full reload.
 //
-// isConnector reports whether a given component.ID refers to a connector
-// (as opposed to a regular receiver). Changes to connector-as-receiver
-// entries require a full reload.
-func receiversOnlyChange(oldCfg, newCfg *Config, isConnector func(component.ID) bool) bool {
+// isConnector, derived from old's connector set, reports whether a given
+// component.ID refers to a connector (as opposed to a regular receiver).
+// Changes to connector-as-receiver entries require a full reload.
+func receiversOnlyChange(old, newCfg *configSnapshot) bool {
 	// Service telemetry must be identical.
-	if !reflect.DeepEqual(oldCfg.Service.Telemetry, newCfg.Service.Telemetry) {
+	if old.telemetryHash != newCfg.telemetryHash {
 		return false
 	}
 
 	// Extensions list must be identical.
-	if !slices.Equal(oldCfg.Service.Extensions, newCfg.Service.Extensions) {
+	if !slices.Equal(old.serviceExtensions, newCfg.serviceExtensions) {
 		return false
 	}
 
 	// Extension configs must be identical.
-	if !reflect.DeepEqual(oldCfg.Extensions, newCfg.Extensions) {
+	if !maps.Equal(old.extensionHashes, newCfg.extensionHashes) {
 		return false
 	}
 
 	// Processor configs must be identical.
-	if !reflect.DeepEqual(oldCfg.Processors, newCfg.Processors) {
+	if !maps.Equal(old.processorHashes, newCfg.processorHashes) {
 		return false
 	}
 
 	// Exporter configs must be identical.
-	if !reflect.DeepEqual(oldCfg.Exporters, newCfg.Exporters) {
+	if !maps.Equal(old.exporterHashes, newCfg.exporterHashes) {
 		return false
 	}
 
 	// Connector configs must be identical.
-	if !reflect.DeepEqual(oldCfg.Connectors, newCfg.Connectors) {
+	if !maps.Equal(old.connectorHashes, newCfg.connectorHashes) {
 		return false
 	}
 
 	// Must have the same set of pipeline IDs.
-	if len(oldCfg.Service.Pipelines) != len(newCfg.Service.Pipelines) {
+	if len(old.pipelines) != len(newCfg.pipelines) {
 		return false
 	}
-	for pid := range oldCfg.Service.Pipelines {
-		if _, ok := newCfg.Service.Pipelines[pid]; !ok {
+	for pid := range old.pipelines {
+		if _, ok := newCfg.pipelines[pid]; !ok {
 			return false
 		}
 	}
 
+	isConnector := isConnectorID(old.connectorHashes)
+
 	// Per-pipeline: processors, exporters, and connector-as-receiver entries
 	// must be identical. Only pure-receiver entries may differ.
-	for pid, oldPipe := range oldCfg.Service.Pipelines {
-		newPipe := newCfg.Service.Pipelines[pid]
+	for pid, oldPipe := range old.pipelines {
+		newPipe := newCfg.pipelines[pid]
 
 		// Processors must be identical.
 		if !slices.Equal(oldPipe.Processors, newPipe.Processors) {
@@ -111,8 +111,9 @@ func filterIDs(ids []component.ID, pred func(component.ID) bool) []component.ID 
 
 // isConnectorID returns a predicate function that checks whether a component.ID
 // refers to a configured connector. This is used to distinguish connector-as-receiver
-// entries from pure receivers in pipeline configs.
-func isConnectorID(connectors map[component.ID]component.Config) func(component.ID) bool {
+// entries from pure receivers in pipeline configs. The map's value type is
+// irrelevant; only key membership is checked.
+func isConnectorID[V any](connectors map[component.ID]V) func(component.ID) bool {
 	return func(id component.ID) bool {
 		_, ok := connectors[id]
 		return ok

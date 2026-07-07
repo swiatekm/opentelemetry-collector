@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -513,13 +512,27 @@ func (g *Graph) ShutdownAll(ctx context.Context, reporter status.Reporter) error
 // membership) are affected. Unchanged receivers keep running without
 // interruption. Connectors, processors, exporters, and all other graph nodes
 // are left untouched.
+//
+// Per-receiver config changes are detected by comparing oldReceiverHashes
+// (from the previously applied config) against a hash of each config in
+// newReceiverCfgs (see HashComponentConfigs), rather than by comparing
+// configs directly. This lets callers avoid retaining an independent copy
+// of every receiver config across reloads. On success, UpdateReceivers
+// returns the hashes of newReceiverCfgs so the caller can cache them for
+// the next reload.
 func (g *Graph) UpdateReceivers(ctx context.Context, set Settings,
-	oldReceiverCfgs, newReceiverCfgs map[component.ID]component.Config,
+	oldReceiverHashes map[component.ID]uint64,
+	newReceiverCfgs map[component.ID]component.Config,
 	receiverFactories map[component.Type]receiver.Factory,
 	host *Host,
-) error {
+) (map[component.ID]uint64, error) {
 	if host == nil {
-		return errors.New("host cannot be nil")
+		return nil, errors.New("host cannot be nil")
+	}
+
+	newReceiverHashes, err := HashComponentConfigs(newReceiverCfgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash new receiver configs: %w", err)
 	}
 
 	// Phase 1: Collect current receiver nodes and the pipelines each belongs to.
@@ -563,7 +576,7 @@ func (g *Graph) UpdateReceivers(ctx context.Context, set Settings,
 		if _, desired := desiredPipelines[nodeID]; !desired {
 			toRemove[nodeID] = rn
 		} else if !maps.Equal(currentPipelines[nodeID], desiredPipelines[nodeID]) ||
-			!reflect.DeepEqual(oldReceiverCfgs[rn.componentID], newReceiverCfgs[rn.componentID]) {
+			oldReceiverHashes[rn.componentID] != newReceiverHashes[rn.componentID] {
 			toRebuild[nodeID] = rn
 		}
 		// else: unchanged — leave running
@@ -576,7 +589,7 @@ func (g *Graph) UpdateReceivers(ctx context.Context, set Settings,
 
 	if len(toRemove) == 0 && len(toRebuild) == 0 && len(toAdd) == 0 {
 		g.telemetry.Logger.Info("Partial receiver reload: no receiver changes detected")
-		return nil
+		return newReceiverHashes, nil
 	}
 
 	// Create a new ReceiverBuilder with the updated configs and install it on
@@ -598,12 +611,12 @@ func (g *Graph) UpdateReceivers(ctx context.Context, set Settings,
 	// Phase 4: Shutdown receivers that are being removed or rebuilt.
 	for nodeID, rn := range toRemove {
 		if err := g.shutdownReceiverNode(ctx, nodeID, rn, host); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	for nodeID, rn := range toRebuild {
 		if err := g.shutdownReceiverNode(ctx, nodeID, rn, host); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -678,7 +691,7 @@ func (g *Graph) UpdateReceivers(ctx context.Context, set Settings,
 			}
 			built[nodeID] = true
 			if err := rn.buildComponent(ctx, set.Telemetry, set.BuildInfo, set.ReceiverBuilder, g.nextConsumers(nodeID)); err != nil {
-				return fmt.Errorf("failed to build receiver %q: %w", rn.componentID, err)
+				return nil, fmt.Errorf("failed to build receiver %q: %w", rn.componentID, err)
 			}
 		}
 	}
@@ -702,14 +715,14 @@ func (g *Graph) UpdateReceivers(ctx context.Context, set Settings,
 					zap.Error(compErr),
 					zap.String("id", instanceID.ComponentID().String()),
 				)
-			return fmt.Errorf("failed to start receiver %q: %w", rn.componentID, compErr)
+			return nil, fmt.Errorf("failed to start receiver %q: %w", rn.componentID, compErr)
 		}
 
 		host.Reporter.ReportOKIfStarting(instanceID)
 	}
 
 	g.telemetry.Logger.Info("Partial receiver reload completed successfully")
-	return nil
+	return newReceiverHashes, nil
 }
 
 func (g *Graph) shutdownReceiverNode(ctx context.Context, nodeID int64, rn *receiverNode, host *Host) error {
