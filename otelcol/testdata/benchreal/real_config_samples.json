@@ -1,0 +1,685 @@
+{
+  "receiver_template": {
+    "filebeat": {
+      "inputs": [
+        {
+          "data_stream": {
+            "dataset": "kubernetes.container_logs",
+            "type": "logs"
+          },
+          "id": "kubernetes-container-logs-agent-pernode-elastic-agent-62rhh-27c3f6a635487a59200e701aa55b559a989c8e4a12284e5726bc12cdd0c147fa",
+          "index": "logs-kubernetes.container_logs-default",
+          "parsers": [
+            {
+              "container": {
+                "format": "auto",
+                "stream": "all"
+              }
+            }
+          ],
+          "paths": [
+            "/var/log/containers/*27c3f6a635487a59200e701aa55b559a989c8e4a12284e5726bc12cdd0c147fa.log"
+          ],
+          "processors": [
+            {
+              "add_agent_metadata": {
+                "data_stream": {
+                  "dataset": "kubernetes.container_logs",
+                  "namespace": "default",
+                  "type": "logs"
+                },
+                "elastic_agent": {
+                  "id": "95478a57-9aa0-473f-ad9c-5206f8be50ab",
+                  "snapshot": true,
+                  "version": "9.5.0"
+                },
+                "input_id": "filestream-container-logs-kubernetes-457e2dea-a5ef-4d7d-b316-bbf8b79620b4.agent",
+                "stream_id": "kubernetes-container-logs-agent-pernode-elastic-agent-62rhh-27c3f6a635487a59200e701aa55b559a989c8e4a12284e5726bc12cdd0c147fa"
+              }
+            },
+            {
+              "add_fields": {
+                "fields": {
+                  "id": "27c3f6a635487a59200e701aa55b559a989c8e4a12284e5726bc12cdd0c147fa",
+                  "image": {
+                    "name": "docker.elastic.co/elastic-agent/elastic-agent:9.5.0-SNAPSHOT"
+                  },
+                  "runtime": "containerd"
+                },
+                "target": "container"
+              }
+            },
+            {
+              "add_fields": {
+                "fields": {
+                  "cluster": {
+                    "name": "partial-reload",
+                    "url": "partial-reload-control-plane:6443"
+                  }
+                },
+                "target": "orchestrator"
+              }
+            },
+            {
+              "add_fields": {
+                "fields": {
+                  "container": {
+                    "name": "agent"
+                  },
+                  "daemonset": {
+                    "name": "agent-pernode-elastic-agent"
+                  },
+                  "labels": {
+                    "controller-revision-hash": "8587494b4f",
+                    "name": "agent-pernode-elastic-agent",
+                    "pod-template-generation": "18"
+                  },
+                  "namespace": "elastic-agent",
+                  "namespace_labels": {
+                    "kubernetes_io/metadata_name": "elastic-agent"
+                  },
+                  "namespace_uid": "4a45487c-ccaa-44d2-b013-42df56421d48",
+                  "node": {
+                    "hostname": "partial-reload-control-plane",
+                    "labels": {
+                      "beta_kubernetes_io/arch": "amd64",
+                      "beta_kubernetes_io/os": "linux",
+                      "kubernetes_io/arch": "amd64",
+                      "kubernetes_io/hostname": "partial-reload-control-plane",
+                      "kubernetes_io/os": "linux",
+                      "node-role_kubernetes_io/control-plane": ""
+                    },
+                    "name": "partial-reload-control-plane",
+                    "uid": "543f4d1a-3c80-4f32-ad47-e1ffb3b6aa84"
+                  },
+                  "pod": {
+                    "ip": "172.19.0.2",
+                    "name": "agent-pernode-elastic-agent-62rhh",
+                    "uid": "457e2dea-a5ef-4d7d-b316-bbf8b79620b4"
+                  }
+                },
+                "target": "kubernetes"
+              }
+            },
+            {
+              "add_fields": {
+                "fields": {
+                  "annotations": {
+                    "elastic_co/dataset": "",
+                    "elastic_co/namespace": "",
+                    "elastic_co/preserve_original_event": ""
+                  }
+                },
+                "target": "kubernetes"
+              }
+            },
+            {
+              "drop_fields": {
+                "fields": [
+                  "kubernetes.annotations.elastic_co/dataset"
+                ],
+                "ignore_missing": true,
+                "when": {
+                  "equals": {
+                    "kubernetes": {
+                      "annotations": {
+                        "elastic_co/dataset": ""
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "drop_fields": {
+                "fields": [
+                  "kubernetes.annotations.elastic_co/namespace"
+                ],
+                "ignore_missing": true,
+                "when": {
+                  "equals": {
+                    "kubernetes": {
+                      "annotations": {
+                        "elastic_co/namespace": ""
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "drop_fields": {
+                "fields": [
+                  "kubernetes.annotations.elastic_co/preserve_original_event"
+                ],
+                "ignore_missing": true,
+                "when": {
+                  "equals": {
+                    "kubernetes": {
+                      "annotations": {
+                        "elastic_co/preserve_original_event": ""
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "add_tags": {
+                "tags": [
+                  "preserve_original_event"
+                ],
+                "when": {
+                  "and": [
+                    {
+                      "has_fields": [
+                        "kubernetes.annotations.elastic_co/preserve_original_event"
+                      ]
+                    },
+                    {
+                      "regexp": {
+                        "kubernetes": {
+                          "annotations": {
+                            "elastic_co/preserve_original_event": "^(?i)true$"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "prospector": {
+            "scanner": {
+              "symlinks": true
+            }
+          },
+          "type": "filestream"
+        }
+      ]
+    },
+    "http": {
+      "enabled": false
+    },
+    "logging": {
+      "with_fields": {
+        "component": {
+          "binary": "filebeat",
+          "dataset": "elastic_agent.filebeat",
+          "id": "filestream-default",
+          "type": "filestream"
+        },
+        "log": {
+          "source": "filestream-default"
+        }
+      }
+    },
+    "management": {
+      "otel": {
+        "enabled": true
+      }
+    },
+    "path": {
+      "data": "/usr/share/elastic-agent/state/data/run/filestream-default",
+      "home": "/usr/share/elastic-agent/data/elastic-agent-e72f3f/components"
+    }
+  },
+  "processors": [
+    {
+      "processors": [
+        {
+          "add_host_metadata": {
+            "when.not.contains.tags": "forwarded"
+          }
+        },
+        {
+          "add_cloud_metadata": null
+        },
+        {
+          "add_docker_metadata": null
+        },
+        {
+          "add_kubernetes_metadata": null
+        }
+      ]
+    },
+    {
+      "processors": [
+        {
+          "add_host_metadata": {
+            "when.not.contains.tags": "forwarded"
+          }
+        },
+        {
+          "add_cloud_metadata": null
+        },
+        {
+          "add_docker_metadata": null
+        },
+        {
+          "add_kubernetes_metadata": null
+        }
+      ]
+    },
+    {
+      "processors": [
+        {
+          "add_host_metadata": {
+            "when.not.contains.tags": "forwarded"
+          }
+        },
+        {
+          "add_cloud_metadata": null
+        },
+        {
+          "add_docker_metadata": null
+        },
+        {
+          "add_kubernetes_metadata": null
+        }
+      ]
+    },
+    {
+      "processors": [
+        {
+          "add_host_metadata": {
+            "when.not.contains.tags": "forwarded"
+          }
+        },
+        {
+          "add_cloud_metadata": null
+        },
+        {
+          "add_docker_metadata": null
+        },
+        {
+          "add_kubernetes_metadata": null
+        }
+      ]
+    }
+  ],
+  "exporters": [
+    {
+      "api_key": "REDACTED",
+      "auth": {
+        "authenticator": "REDACTED"
+      },
+      "bulk_response_filter_path": "errors,items.*.error,items.*.status,items.*.failure_store",
+      "cloudid": "",
+      "compression": "gzip",
+      "compression_params": {
+        "level": 1
+      },
+      "discover": {
+        "interval": "0s",
+        "on_start": false
+      },
+      "endpoints": [
+        "https://my-observability-project-c6ef05.es.europe-west3.gcp.elastic.cloud:443"
+      ],
+      "flush": {
+        "bytes": 0,
+        "interval": "0s"
+      },
+      "force_attempt_http2": true,
+      "idle_conn_timeout": "1m30s",
+      "include_source_on_error": true,
+      "logs_dynamic_id": {
+        "enabled": true
+      },
+      "logs_dynamic_index": {
+        "enabled": false
+      },
+      "logs_dynamic_pipeline": {
+        "enabled": true
+      },
+      "logs_index": "",
+      "logstash_format": {
+        "date_format": "%Y.%m.%d",
+        "enabled": false,
+        "prefix_separator": "-"
+      },
+      "mapping": {
+        "allowed_modes": [
+          "bodymap",
+          "ecs",
+          "none",
+          "otel",
+          "raw"
+        ],
+        "mode": "otel"
+      },
+      "max_conns_per_host": 1,
+      "max_idle_conns": 100,
+      "metadata_keys": [],
+      "metrics_dynamic_index": {
+        "enabled": false
+      },
+      "metrics_index": "",
+      "num_workers": 0,
+      "password": "REDACTED",
+      "pipeline": "",
+      "retry": {
+        "enabled": true,
+        "initial_interval": "1s",
+        "max_interval": "1m0s",
+        "max_requests": 0,
+        "max_retries": 3,
+        "retry_on_status": [
+          429,
+          500,
+          501,
+          502,
+          503,
+          504,
+          505,
+          506,
+          507,
+          508,
+          510,
+          511
+        ]
+      },
+      "sending_queue": {
+        "batch": {
+          "flush_timeout": "10s",
+          "max_size": 1600,
+          "min_size": 1600,
+          "partition": {
+            "metadata_keys": []
+          },
+          "sizer": {}
+        },
+        "block_on_overflow": true,
+        "num_consumers": 1,
+        "queue_size": 3200,
+        "sizer": {},
+        "storage": null,
+        "wait_for_result": true
+      },
+      "suppress_conflict_errors": true,
+      "telemetry": {
+        "log_failed_docs_input": false,
+        "log_failed_docs_input_rate_limit": "1s",
+        "log_request_body": false,
+        "log_response_body": false
+      },
+      "timeout": "1m30s",
+      "traces_dynamic_id": {
+        "enabled": false
+      },
+      "traces_dynamic_index": {
+        "enabled": false
+      },
+      "traces_index": "",
+      "user": ""
+    },
+    {
+      "api_key": "REDACTED",
+      "auth": {
+        "authenticator": "REDACTED"
+      },
+      "bulk_response_filter_path": "errors,items.*.error,items.*.status,items.*.failure_store",
+      "cloudid": "",
+      "compression": "gzip",
+      "compression_params": {
+        "level": 1
+      },
+      "discover": {
+        "interval": "0s",
+        "on_start": false
+      },
+      "endpoints": [
+        "https://my-observability-project-c6ef05.es.europe-west3.gcp.elastic.cloud:443"
+      ],
+      "flush": {
+        "bytes": 0,
+        "interval": "0s"
+      },
+      "force_attempt_http2": true,
+      "idle_conn_timeout": "1m30s",
+      "include_source_on_error": true,
+      "logs_dynamic_id": {
+        "enabled": true
+      },
+      "logs_dynamic_index": {
+        "enabled": false
+      },
+      "logs_dynamic_pipeline": {
+        "enabled": true
+      },
+      "logs_index": "",
+      "logstash_format": {
+        "date_format": "%Y.%m.%d",
+        "enabled": false,
+        "prefix_separator": "-"
+      },
+      "mapping": {
+        "allowed_modes": [
+          "bodymap",
+          "ecs",
+          "none",
+          "otel",
+          "raw"
+        ],
+        "mode": "otel"
+      },
+      "max_conns_per_host": 1,
+      "max_idle_conns": 100,
+      "metadata_keys": [],
+      "metrics_dynamic_index": {
+        "enabled": false
+      },
+      "metrics_index": "",
+      "num_workers": 0,
+      "password": "REDACTED",
+      "pipeline": "",
+      "retry": {
+        "enabled": true,
+        "initial_interval": "1s",
+        "max_interval": "1m0s",
+        "max_requests": 0,
+        "max_retries": 3,
+        "retry_on_status": [
+          429,
+          500,
+          501,
+          502,
+          503,
+          504,
+          505,
+          506,
+          507,
+          508,
+          510,
+          511
+        ]
+      },
+      "sending_queue": {
+        "batch": {
+          "flush_timeout": "10s",
+          "max_size": 1600,
+          "min_size": 1600,
+          "partition": {
+            "metadata_keys": []
+          },
+          "sizer": {}
+        },
+        "block_on_overflow": true,
+        "num_consumers": 1,
+        "queue_size": 3200,
+        "sizer": {},
+        "storage": null,
+        "wait_for_result": true
+      },
+      "suppress_conflict_errors": true,
+      "telemetry": {
+        "log_failed_docs_input": false,
+        "log_failed_docs_input_rate_limit": "1s",
+        "log_request_body": false,
+        "log_response_body": false
+      },
+      "timeout": "1m30s",
+      "traces_dynamic_id": {
+        "enabled": false
+      },
+      "traces_dynamic_index": {
+        "enabled": false
+      },
+      "traces_index": "",
+      "user": ""
+    },
+    {
+      "append": false,
+      "compression": "",
+      "compression_params": {
+        "level": 0
+      },
+      "create_directory": false,
+      "directory_permissions": "",
+      "encoding": null,
+      "flush_interval": "1s",
+      "format": "json",
+      "group_by": {
+        "enabled": false,
+        "max_open_files": 100,
+        "resource_attribute": "fileexporter.path_segment"
+      },
+      "path": "/usr/share/elastic-agent/state/data/logs/elastic-agent-metrics.ndjson",
+      "rotation": {
+        "localtime": false,
+        "max_backups": 1,
+        "max_days": 0,
+        "max_megabytes": 10
+      }
+    }
+  ],
+  "connectors": [
+    {
+      "event_template": {
+        "agent": {
+          "id": "95478a57-9aa0-473f-ad9c-5206f8be50ab",
+          "name": "partial-reload-control-plane",
+          "version": "9.5.0"
+        },
+        "component": {
+          "binary": "elastic-otel-collector",
+          "id": "elastic-otel-collector"
+        },
+        "data_stream": {
+          "dataset": "elastic_agent.elastic_agent",
+          "namespace": "default",
+          "type": "metrics"
+        },
+        "elastic_agent": {
+          "id": "95478a57-9aa0-473f-ad9c-5206f8be50ab",
+          "process": "elastic-otel-collector",
+          "snapshot": true,
+          "version": "9.5.0"
+        },
+        "event": {
+          "dataset": "elastic_agent.elastic_agent"
+        },
+        "host": {
+          "hostname": "partial-reload-control-plane"
+        },
+        "metricset": {
+          "name": "stats"
+        }
+      },
+      "exporter_names": {
+        "elasticsearch/_agent-component/default": "elasticsearch-default",
+        "elasticsearch/_agent-component/monitoring": "elasticsearch-monitoring"
+      },
+      "input_event_template": {
+        "agent": {
+          "id": "95478a57-9aa0-473f-ad9c-5206f8be50ab",
+          "name": "partial-reload-control-plane",
+          "version": "9.5.0"
+        },
+        "component": {
+          "binary": "elastic-otel-collector",
+          "id": "elastic-otel-collector"
+        },
+        "data_stream": {
+          "dataset": "elastic_agent.filebeat_input",
+          "namespace": "default",
+          "type": "metrics"
+        },
+        "elastic_agent": {
+          "id": "95478a57-9aa0-473f-ad9c-5206f8be50ab",
+          "process": "elastic-otel-collector",
+          "snapshot": true,
+          "version": "9.5.0"
+        },
+        "event": {
+          "dataset": "elastic_agent.filebeat_input"
+        },
+        "host": {
+          "hostname": "partial-reload-control-plane"
+        },
+        "metricset": {
+          "name": "stats"
+        }
+      }
+    }
+  ],
+  "extensions": [
+    {
+      "continue_on_error": true,
+      "idle_connection_timeout": "3s",
+      "proxy_disable": false,
+      "timeout": "1m30s"
+    },
+    {
+      "continue_on_error": true,
+      "idle_connection_timeout": "3s",
+      "proxy_disable": false,
+      "timeout": "1m30s"
+    },
+    {
+      "endpoint": "unix:///usr/share/elastic-agent/state/data/edot-diagnostics-extension.sock"
+    },
+    {
+      "check_collector_pipeline": null,
+      "component_health": {
+        "include_permanent_errors": true,
+        "include_recoverable_errors": true,
+        "recovery_duration": "5m0s"
+      },
+      "cors": null,
+      "endpoint": "localhost:13133",
+      "grpc": null,
+      "http": {
+        "config": {
+          "enabled": false,
+          "include_attributes": false,
+          "path": "/health/config"
+        },
+        "cors": null,
+        "endpoint": "localhost:43231",
+        "idle_timeout": "0s",
+        "keep_alives_enabled": true,
+        "read_header_timeout": "0s",
+        "status": {
+          "enabled": true,
+          "include_attributes": true,
+          "path": "/health/status"
+        },
+        "tls": null,
+        "transport": "tcp",
+        "write_timeout": "0s"
+      },
+      "idle_timeout": "0s",
+      "keep_alives_enabled": true,
+      "path": "/",
+      "read_header_timeout": "0s",
+      "response_body": null,
+      "tls": null,
+      "transport": "tcp",
+      "use_v2": true,
+      "write_timeout": "0s"
+    }
+  ]
+}
