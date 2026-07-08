@@ -10,6 +10,8 @@ import (
 
 	"go.uber.org/zap"
 	"go.yaml.in/yaml/v3"
+
+	"go.opentelemetry.io/collector/confmap/internal"
 )
 
 // ProviderSettings are the settings to initialize a Provider.
@@ -212,6 +214,7 @@ func (r *Retrieved) AsConf() (*Conf, error) {
 		}
 		return nil, fmt.Errorf("retrieved value (type=%T) cannot be used as a Conf", r.rawConf)
 	}
+	internal.Counters.AsConfCalls.Add(1)
 	return NewFromStringMap(val), nil
 }
 

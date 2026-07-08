@@ -197,6 +197,7 @@ func (mr *Resolver) Resolve(ctx context.Context) (*Conf, error) {
 		}
 		cfgMap[k] = escapeDollarSigns(val)
 	}
+	internal.Counters.ResolveNewFromExpanded.Add(1)
 	retMap = NewFromStringMap(cfgMap)
 
 	// Apply the converters in the given order.

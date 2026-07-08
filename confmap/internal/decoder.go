@@ -320,6 +320,7 @@ func unmarshalerHookFunc(result any, skipTopLevelUnmarshaler bool) mapstructure.
 			unmarshaler = reflect.New(to.Type()).Interface().(Unmarshaler)
 		}
 
+		Counters.HookNewFromStringMap.Add(1)
 		c := NewFromStringMap(from.Interface().(map[string]any))
 		c.skipTopLevelUnmarshaler = true
 		if err := unmarshaler.Unmarshal(c); err != nil {

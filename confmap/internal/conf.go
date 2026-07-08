@@ -51,6 +51,29 @@ func NewFromStringMap(data map[string]any) *Conf {
 	return p
 }
 
+// countLeaves is a temporary instrumentation helper (see CopyCounters) that
+// counts primitive leaf values in a nested map/slice structure, as a cheap
+// proxy for "how much data is in this map" without paying for a full
+// serialization just to measure it.
+func countLeaves(v any) int {
+	switch m := v.(type) {
+	case map[string]any:
+		n := 0
+		for _, val := range m {
+			n += countLeaves(val)
+		}
+		return n
+	case []any:
+		n := 0
+		for _, val := range m {
+			n += countLeaves(val)
+		}
+		return n
+	default:
+		return 1
+	}
+}
+
 // Unmarshal unmarshalls the config into a struct using the given options.
 // Tags on the fields of the structure must be properly set.
 func (l *Conf) Unmarshal(result any, opts ...UnmarshalOption) error {
@@ -58,6 +81,7 @@ func (l *Conf) Unmarshal(result any, opts ...UnmarshalOption) error {
 	for _, opt := range opts {
 		opt.apply(&set)
 	}
+	Counters.UnmarshalCalls.Add(1)
 	return Decode(l.toStringMapWithExpand(), result, set, l.skipTopLevelUnmarshaler)
 }
 
@@ -81,7 +105,10 @@ func (l *Conf) Marshal(rawVal any, opts ...MarshalOption) error {
 // AllKeys returns all keys holding a value, regardless of where they are set.
 // Nested keys are returned with a KeyDelimiter separator.
 func (l *Conf) AllKeys() []string {
-	return l.k.Keys()
+	keys := l.k.Keys()
+	Counters.AllKeysCalls.Add(1)
+	Counters.AllKeysTotalLen.Add(int64(len(keys)))
+	return keys
 }
 
 // Get can retrieve any value given the key to use.
@@ -98,6 +125,7 @@ func (l *Conf) IsSet(key string) bool {
 // Merge merges the input given configuration into the existing config.
 // Note that the given map may be modified.
 func (l *Conf) Merge(in *Conf) error {
+	Counters.MergeCalls.Add(1)
 	if metadata.ConfmapEnableMergeAppendOptionFeatureGate.IsEnabled() {
 		return l.mergeAppend(in)
 	}
@@ -141,9 +169,13 @@ func (l *Conf) Sub(key string) (*Conf, error) {
 
 	switch v := data.(type) {
 	case map[string]any:
+		Counters.SubCalls.Add(1)
+		Counters.SubItems.Add(int64(countLeaves(v)))
 		return NewFromStringMap(v), nil
 	case ExpandedValue:
 		if m, ok := v.Value.(map[string]any); ok {
+			Counters.SubCalls.Add(1)
+			Counters.SubItems.Add(int64(countLeaves(m)))
 			return NewFromStringMap(m), nil
 		} else if v.Value == nil {
 			// If the value is nil, return a new empty Conf.
@@ -177,6 +209,7 @@ func (l *Conf) toStringMapWithExpand() map[string]any {
 // In particular, if the Conf was created from a nil value,
 // ToStringMap will return map[string]any(nil).
 func (l *Conf) ToStringMap() map[string]any {
+	Counters.ToStringMapCalls.Add(1)
 	return sanitize(l.toStringMapWithExpand()).(map[string]any)
 }
 
