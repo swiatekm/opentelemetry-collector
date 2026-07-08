@@ -128,7 +128,7 @@ func TestUnmarshalError(t *testing.T) {
 					conf: confmap.NewFromStringMap(map[string]any{
 						"nop": "tests",
 					}),
-					expectedError: "'[nop]' expected type 'map[string]interface {}', got unconvertible type 'string'",
+					expectedError: "unexpected sub-config value kind",
 				},
 			}
 
