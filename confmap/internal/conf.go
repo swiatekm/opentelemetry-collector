@@ -230,7 +230,14 @@ func sanitize(a any) any {
 func sanitizeExpanded(a any, useOriginal bool) any {
 	switch m := a.(type) {
 	case map[string]any:
-		c := maps.Copy(m)
+		// If the value is nil, return nil.
+		if m == nil {
+			return map[string]any(nil)
+		}
+		// Every value is about to be overwritten by the loop below, so there is
+		// no need for maps.Copy's full recursive deep copy here (it would just
+		// be discarded) — a plain same-size map is enough to hold the results.
+		c := make(map[string]any, len(m))
 		for k, v := range m {
 			c[k] = sanitizeExpanded(v, useOriginal)
 		}
